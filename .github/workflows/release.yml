@@ -1,0 +1,27 @@
+# Packages the addon and publishes it whenever a version tag (v2.0.1, ...) is pushed.
+# The zip goes on the GitHub release, and to CurseForge once the TOC has an
+# X-Curse-Project-ID line and the repo has a CF_API_TOKEN secret.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history, for the generated changelog
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2

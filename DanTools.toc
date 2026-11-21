@@ -1,0 +1,21 @@
+## Interface: 16001
+## Title: DanTools
+## Notes: Small tools. /dantools
+## Version: 2.0.0
+## IconTexture: Interface\Icons\INV_Misc_Wrench_01
+## SavedVariables: DanToolsAccountDB
+## SavedVariablesPerCharacter: DanToolsDB
+## OptionalDeps: Grudge, BagValue
+
+Core.lua
+Options.lua
+Speed.lua
+TTK.lua
+XPRate.lua
+Gold.lua
+FiveSecond.lua
+Drink.lua
+EnemyAlert.lua
+Grudge.lua
+BagValue.lua
+ItemLevel.lua

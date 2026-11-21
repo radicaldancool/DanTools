@@ -1,0 +1,5 @@
+package-as: DanTools
+
+ignore:
+  - README.md
+  - .gitattributes
