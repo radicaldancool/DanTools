@@ -17,6 +17,7 @@ on-screen display can be dragged, locked and restyled (font, size, background, b
 | Grudge List | Remembers enemy players who killed you, and marks their nameplate and tooltip. |
 | Bag Value | Vendor price on bag items, with the cheapest item outlined. |
 | Item Level | Item level on gear in your bags and on the character screen. |
+| Quest Sound | Plays a clip when you accept a quest. |
 
 ## Install
 
@@ -29,8 +30,9 @@ the folder has to be named `DanTools`.
 
 ## Sounds
 
-Three tools play a sound clip, each with a toggle on that tool's settings page: Enemy Alert (an enemy
-player is detected), Drink Timer (you start drinking) and XP Rate (you level up). To use your own,
+Four tools play a sound clip, each with a toggle on that tool's settings page: Enemy Alert (an enemy
+player is detected), Drink Timer (you start drinking), XP Rate (you level up) and Quest Sound (you
+accept a quest). To use your own,
 replace the `.ogg` files in the `Sounds` folder and restart the game.
 
 ## Commands
