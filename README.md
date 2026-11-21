@@ -20,7 +20,7 @@ on-screen display can be dragged, locked and restyled (font, size, background, b
 
 ## Install
 
-**CurseForge app:** search for DanTools under World of Warcraft, Forever.
+**CurseForge:** [DanTools on CurseForge](https://www.curseforge.com/wow/addons/dantools), or search for DanTools in the CurseForge app under World of Warcraft, Forever.
 
 **By hand:** download the zip from the
 [latest release](https://github.com/radicaldancool/DanTools/releases/latest) and unzip it into
