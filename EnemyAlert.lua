@@ -24,6 +24,7 @@ local tool = DanTools:AddTool({
 	display = { width = 250, lines = 3, pos = { "CENTER", "CENTER", 0, 160 }, hideIdle = true },
 	options = {
 		{ key = "sound", label = "Sound", default = true },
+		{ key = "ownSound", label = "Custom sound", default = true }, -- Sounds\EnemyAlert.ogg in place of the ping
 		{ key = "grudgeOnly", label = "Grudge only", default = false },
 		{ key = "click", label = "Click to target", default = true },
 	},
@@ -32,6 +33,17 @@ local tool = DanTools:AddTool({
 local entries = {} -- oldest first: { name, target, text, seenAt }
 local alerted = {} -- name -> when the alert last sounded for them
 local lastSound = 0
+
+-- Your own sound if it's on and the file is there, else the ping. Grudge players get the raid warning
+-- as well.
+local function alertSound(grudge)
+	local played = tool.db.ownSound and DanTools.PlayOwnSound("EnemyAlert")
+	if grudge then
+		PlaySound(GRUDGE_SOUND, "Master")
+	elseif not played then
+		PlaySound(SOUND, "Master")
+	end
+end
 
 local rows = {}    -- the secure click-to-target button over each line
 local rowsState    -- what the rows were last set up for, so they're only touched when that changes
@@ -152,7 +164,7 @@ local function note(unit)
 		alerted[name] = now
 		if tool.db.sound and now - lastSound > SOUND_GAP then
 			lastSound = now
-			PlaySound(grudge and GRUDGE_SOUND or SOUND, "Master")
+			alertSound(grudge)
 		end
 	end
 	redraw()

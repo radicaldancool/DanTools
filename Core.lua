@@ -24,6 +24,14 @@ DanTools.byKey = {}
 
 local PAD = 4 -- space between a display's text and the edge of its background
 DanTools.PAD = PAD
+
+-- Plays Sounds\<name>.ogg from this addon's folder, if the file is there, and returns whether it did.
+-- The game only finds a newly added file after a full restart.
+function DanTools.PlayOwnSound(name)
+	local file = [[Interface\AddOns\DanTools\Sounds\]] .. name .. ".ogg"
+	local ok, played = pcall(PlaySoundFile, file, "Master")
+	return (ok and played) and true or false
+end
 local CLEAR, BLACK = { 0, 0, 0, 0 }, { 0, 0, 0, 1 }
 
 function DanTools.plain(v)

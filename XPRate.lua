@@ -1,5 +1,6 @@
 -- XP Rate: your XP per minute or per hour since the last reset, and how long until you level at that rate.
 -- The count survives /reload and quick relogs; after more than 5 minutes logged out it starts fresh.
+-- With "Level-up sound" on, Sounds\LevelUp.ogg plays when you level, if that file is there.
 
 local _, DanTools = ...
 local plain = DanTools.plain
@@ -10,7 +11,10 @@ local tool = DanTools:AddTool({
 	key = "xp",
 	name = "XP Rate",
 	display = { width = 130, lines = 2, pos = { "CENTER", "CENTER", 0, -260 } },
-	options = { { key = "levelTime", label = "Time to level", default = true } },
+	options = {
+		{ key = "levelTime", label = "Time to level", default = true },
+		{ key = "levelSound", label = "Level-up sound", default = true },
+	},
 	bindings = {
 		{ key = "toggle", label = "Per min / hour", default = "LeftButton" },
 		{ key = "reset", label = "Reset", default = "SHIFT-LeftButton" },
@@ -88,6 +92,8 @@ end)
 tool.frame:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_XP_UPDATE" then
 		onXP()
+	elseif event == "PLAYER_LEVEL_UP" then
+		if tool.db.levelSound then DanTools.PlayOwnSound("LevelUp") end
 	else -- PLAYER_LOGOUT, also fires on /reload
 		tool.db.lastSeen = time()
 	end
@@ -104,9 +110,11 @@ function tool:OnEnable()
 	lastXP = nil
 	onXP()
 	self.frame:RegisterEvent("PLAYER_XP_UPDATE")
+	self.frame:RegisterEvent("PLAYER_LEVEL_UP")
 end
 
 function tool:OnDisable() -- XP isn't counted while off, so the next start is a fresh count
 	self.frame:UnregisterEvent("PLAYER_XP_UPDATE")
+	self.frame:UnregisterEvent("PLAYER_LEVEL_UP")
 	self.db.start = nil
 end

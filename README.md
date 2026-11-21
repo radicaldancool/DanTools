@@ -27,6 +27,12 @@ on-screen display can be dragged, locked and restyled (font, size, background, b
 `World of Warcraft\_forever_\Interface\AddOns`. Use the release zip, not the green "Code" button:
 the folder has to be named `DanTools`.
 
+## Sounds
+
+Three tools play a sound clip, each with a toggle on that tool's settings page: Enemy Alert (an enemy
+player is detected), Drink Timer (you start drinking) and XP Rate (you level up). To use your own,
+replace the `.ogg` files in the `Sounds` folder and restart the game.
+
 ## Commands
 
 - `/dantools` opens the settings window. The minimap button does the same.
