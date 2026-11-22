@@ -15,7 +15,7 @@ local plain, isEnemyPlayer = DanTools.plain, DanTools.IsEnemyPlayer
 
 local KEEP = 20      -- most players remembered at once; the display shows the top few
 local REALERT = 60   -- seconds out of sight before the same player can sound the alert again
-local SOUND_GAP = 2  -- at most one sound in this many seconds
+local MIN_GAP = 2     -- sounds are never closer together than this many seconds, whatever the cooldown
 local SOUND = SOUNDKIT and SOUNDKIT.MAP_PING or 3175
 local GRUDGE_SOUND = SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959
 local PAD = DanTools.PAD
@@ -31,6 +31,7 @@ local tool = DanTools:AddTool({
 	options = {
 		{ key = "sound", label = "Sound", default = true },
 		{ key = "ownSound", label = "Custom sound", default = true }, -- Sounds/EnemyAlert.ogg in place of the ping
+		{ key = "cooldown", label = "Cooldown (s)", type = "number", default = 2, min = 0, max = 60, step = 1 },
 		{ key = "grudgeOnly", label = "Grudge only", default = false },
 		{ key = "click", label = "Click to target", default = true },
 		{ key = "stay", label = "Stay (s)", type = "number", default = 60, min = 10, max = 600, step = 10 },
@@ -41,18 +42,24 @@ local tool = DanTools:AddTool({
 local entries = {} -- oldest first: { name, first, class, grudge, text, seenAt }
 local shown = {}   -- the entries on the rows, top to bottom: Grudge players, then the newest
 local alerted = {} -- name -> when the alert last sounded for them
-local lastSound = 0
+local lastSound, lastWarning = -1000, -1000 -- when your sound or the ping last played, and the raid warning
 
 for _, line in ipairs(tool.lines) do line.back:SetColorTexture(0.9, 0, 0, 0.4) end -- shown on Grudge rows
 
--- Your own sound if it's on and the file is there, else the ping. Grudge players get the raid warning
--- as well.
-local function alertSound(grudge)
-	local played = tool.db.ownSound and DanTools.PlayOwnSound("EnemyAlert")
-	if grudge then
+-- Your own sound if it's on and the file is there, else the ping, at most once per "Cooldown (s)".
+-- Grudge players get the raid warning as well, cooldown or not.
+local function alertSound(grudge, now)
+	if now - lastSound >= math.max(tool.db.cooldown, MIN_GAP) then
+		local played = tool.db.ownSound and DanTools.PlayOwnSound("EnemyAlert")
+		if not played and not grudge then
+			PlaySound(SOUND, "Master")
+			played = true
+		end
+		if played then lastSound = now end
+	end
+	if grudge and now - lastWarning >= MIN_GAP then
+		lastWarning = now
 		PlaySound(GRUDGE_SOUND, "Master")
-	elseif not played then
-		PlaySound(SOUND, "Master")
 	end
 end
 
@@ -246,10 +253,7 @@ local function note(unit)
 	end
 	if arrived and (not alerted[name] or now - alerted[name] > REALERT) then
 		alerted[name] = now
-		if tool.db.sound and now - lastSound > SOUND_GAP then
-			lastSound = now
-			alertSound(grudge)
-		end
+		if tool.db.sound then alertSound(grudge, now) end
 	end
 	redraw()
 end

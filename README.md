@@ -39,6 +39,7 @@ replace the `.ogg` files in the `Sounds` folder and restart the game.
 
 - `/dantools` opens the settings window. The minimap button does the same.
 - `/grudge` opens the Grudge list.
+- `/dantools mana` prints what the mana watcher last saw (for the Five-Second Rule).
 
 ## Releasing
 

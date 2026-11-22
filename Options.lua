@@ -579,4 +579,10 @@ function Options.Init()
 end
 
 SLASH_DANTOOLS1 = "/dantools"
-SlashCmdList.DANTOOLS = function() Options.Toggle() end
+SlashCmdList.DANTOOLS = function(msg)
+	if msg and msg:lower():match("^%s*mana") then -- what the mana watcher last saw
+		DanTools:PrintManaLog()
+	else
+		Options.Toggle()
+	end
+end

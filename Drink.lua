@@ -4,7 +4,7 @@
 -- or as text ("Drinking: 12s").
 -- Where Forever hides a value from addons the bar still fills (the game draws it), and the time is
 -- just what's left of the food or drink.
--- With "Sound" on, Sounds\Drink.ogg plays when you start drinking, if that file is there.
+-- With "Sound" on, Sounds\Drink.ogg plays when you start eating or drinking, if that file is there.
 
 local _, DanTools = ...
 local plain = DanTools.plain
@@ -35,7 +35,7 @@ local manaBar, healthBar = DanTools:NewBar(tool), DanTools:NewBar(tool)
 tool.stack = { tool.lines[1], manaBar, tool.lines[2], healthBar } -- the text lines are only used when the bars are off
 
 local mana, health = {}, {} -- { since, from }: when this rise started and the value it started at
-local drinking = false
+local consuming -- eating or drinking, as of the last look (nil before the first one)
 
 -- When your Drink and Food buffs end (0 if that's hidden), or nil for one you don't have.
 local function buffs()
@@ -102,8 +102,9 @@ local function update()
 	local db = tool.db
 	local drink, food = buffs()
 	local now = GetTime()
-	if drink and not drinking and db.sound then DanTools.PlayOwnSound("Drink") end
-	drinking = drink ~= nil
+	local busy = drink ~= nil or food ~= nil
+	if busy and consuming == false and db.sound then DanTools.PlayOwnSound("Drink") end
+	consuming = busy
 	if not drink then wipe(mana) end
 	if not food then wipe(health) end
 	local first = resource(manaBar, drink, "Drinking", mana, UnitPower("player", MANA), UnitPowerMax("player", MANA),

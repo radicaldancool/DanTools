@@ -530,8 +530,11 @@ local function hookBags()
 end
 
 ---------------------------------------------------------------------------------------------------
--- Mana spending: tools are told each time you spend mana. It's seen as your mana dropping; where
--- Forever hides your mana from addons, as a spell you finished casting that costs mana.
+-- Mana spending: tools are told each time you spend mana on a spell. Two things show it: your mana
+-- dropping, and one of your casts finishing. While your mana can be read it takes both, close
+-- together, so nothing else counts: wand shots, the ticks of a channeled spell, mana drains, small
+-- corrections to your mana. Where Forever hides your mana from addons, a finished cast that costs
+-- mana is all there is to go on.
 
 local MANA = Enum and Enum.PowerType and Enum.PowerType.Mana or 0
 DanTools.MANA = MANA
@@ -547,46 +550,169 @@ local function manaSpent(amount)
 	for _, fn in ipairs(manaListeners) do fn(amount) end
 end
 
--- A spell's mana cost: a number (0 for none), or nil if it can't be read.
+local TOGETHER = 0.75    -- seconds apart a finished cast and a drop in mana can be and still be one spell
+local CHANNEL_MAX = 45   -- a channel older than this many seconds is taken to be over
+local LOG_MAX = 60
+-- spells that cost no mana, whatever the game says about their cost: the shots that repeat by
+-- themselves (wand, Auto Shot, Throw, bow, gun, crossbow) and Life Tap, which is paid in health
+local FREE = { [5019] = true, [75] = true, [2764] = true, [3018] = true, [2480] = true, [7918] = true,
+	[7919] = true, [1454] = true, [1455] = true, [1456] = true, [11687] = true, [11688] = true, [11689] = true,
+	[27222] = true }
+local costsMana = {}       -- spellID -> true/false, remembered from a time its cost could be read
+local channelSince         -- when the channel you're in began: what finishes during it is one of its ticks
+local channelEndedAt       -- when your last channel ended: a last tick can show just after
+local ticks = {}           -- spellID -> true for spells seen as ticks
+local lastCast, lastCastAt -- the cast that finished last, whatever it was
+local castAt               -- when a cast that may have cost mana finished, while its drop hasn't shown
+local dropAt, dropAmount   -- a drop in mana whose cast hasn't shown
+
+-- The last things seen here, for /dantools mana. Kept with the saved settings.
+local function log(...)
+	local list = DanTools.account and DanTools.account.manaLog
+	if not list then return end
+	list[#list + 1] = date("%H:%M:%S ") .. string.format(...)
+	if #list > LOG_MAX then table.remove(list, 1) end
+end
+
+function DanTools:PrintManaLog()
+	local list = self.account.manaLog or {}
+	print("|cffffd100DanTools|r mana")
+	for i = math.max(1, #list - 19), #list do print("  " .. list[i]) end
+end
+
+local function spellLabel(spellID)
+	local name
+	if spellID and C_Spell and C_Spell.GetSpellName then
+		local ok, result = pcall(C_Spell.GetSpellName, spellID)
+		if ok then name = plain(result) end
+	end
+	return tostring(spellID) .. " " .. tostring(name or "?")
+end
+
+-- What a spell costs in mana: true and the amount (nil if that's hidden), false if it costs none,
+-- or nil if there's no telling.
 local function readManaCost(spellID)
 	local costs = C_Spell.GetSpellPowerCost(spellID)
+	if issecretvalue and issecretvalue(costs) then return nil end
+	if costs == nil then return false end -- no costs listed at all, as for a wand shot
 	if type(costs) ~= "table" then return nil end
+	local unsure = false
 	for _, c in ipairs(costs) do
-		local kind, cost = plain(c.type), plain(c.cost)
-		if kind == nil or cost == nil then return nil end
-		if kind == MANA then return cost end
+		local kind = plain(c.type)
+		if kind == nil then
+			unsure = true
+		elseif kind == MANA then
+			local cost = plain(c.cost)
+			if cost == nil then return true end
+			return cost > 0, cost
+		end -- any other kind isn't mana, hidden amount or not: health for Life Tap, rage, energy
 	end
-	return 0
+	if unsure then return nil end
+	return false
+end
+
+-- Whether a cast may have cost mana: true, false, or nil if there's no telling. Then the cost, if
+-- it can be read.
+local function paidCast(spellID)
+	if not spellID then return nil end
+	if FREE[spellID] then return false end
+	local paid, cost
+	if C_Spell and C_Spell.GetSpellPowerCost then
+		local ok, a, b = pcall(readManaCost, spellID)
+		if ok then paid, cost = a, b end
+	end
+	if paid == nil then return costsMana[spellID] end
+	if paid then
+		costsMana[spellID] = true
+	elseif costsMana[spellID] == nil then -- a free cast of a spell that has cost mana before changes nothing
+		costsMana[spellID] = false
+	end
+	return paid, cost
+end
+
+-- Whether you're still in the channel that set channelSince.
+local function channeling(now)
+	if not channelSince then return false end
+	local over = now - channelSince > CHANNEL_MAX
+	if not over and UnitChannelInfo then
+		local ok, name = pcall(UnitChannelInfo, "player")
+		over = ok and not (issecretvalue and issecretvalue(name)) and name == nil
+	end
+	if over then channelSince = nil end
+	return not over
+end
+
+-- One of your casts finished, or a channel began.
+local function castDone(spellID, now)
+	if spellID and spellID == lastCast and lastCastAt and now - lastCastAt < 0.5 then return end -- told twice
+	lastCast, lastCastAt = spellID, now
+	if spellID and FREE[spellID] then
+		log("cast %s: free", spellLabel(spellID))
+	elseif lastMana == nil then -- mana is hidden: the cast and its cost are all there is to go on
+		local paid, cost = paidCast(spellID)
+		if paid or (paid == nil and plain(UnitPowerType("player")) == MANA) then
+			log("cast %s: spent, mana hidden, cost %s", spellLabel(spellID), tostring(cost))
+			manaSpent(cost)
+		else
+			log("cast %s: skipped, mana hidden", spellLabel(spellID))
+		end
+	elseif dropAt and now - dropAt <= TOGETHER then -- mana is readable, and its drop showed first
+		dropAt = nil
+		log("cast %s: spent %.0f", spellLabel(spellID), dropAmount)
+		manaSpent(dropAmount)
+	else -- whatever the spell: if mana drops now, it was spent on this
+		castAt = now
+		log("cast %s: wait", spellLabel(spellID))
+	end
 end
 
 local manaWatcher = CreateFrame("Frame")
 manaWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
-	if event == "UNIT_SPELLCAST_SUCCEEDED" then
-		if lastMana ~= nil then return end -- mana is readable, so the drop itself reports the spending
+	local now = GetTime()
+	if event == "UNIT_SPELLCAST_CHANNEL_START" then
 		spellID = plain(spellID)
-		local cost
-		if spellID and C_Spell and C_Spell.GetSpellPowerCost then
-			local ok, result = pcall(readManaCost, spellID)
-			if ok then cost = result end
-		end
-		if cost == nil then
-			-- can't tell which spell or what it cost: count it if mana is what you're using right now
-			if plain(UnitPowerType("player")) == MANA then manaSpent(nil) end
-		elseif cost > 0 then
-			manaSpent(cost)
+		channelSince = now
+		log("channel %s", spellLabel(spellID))
+		-- its own cast may have finished a moment before this, and then it's been counted already
+		if not (lastCast == spellID and lastCastAt and now - lastCastAt < 1) then castDone(spellID, now) end
+	elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+		channelSince, channelEndedAt = nil, now
+		log("channel end")
+	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+		spellID = plain(spellID)
+		if channeling(now) then
+			if spellID then ticks[spellID] = true end
+			log("cast %s: tick", spellLabel(spellID))
+		elseif spellID and ticks[spellID] and channelEndedAt and now - channelEndedAt < 1 then
+			log("cast %s: late tick", spellLabel(spellID))
+		else
+			castDone(spellID, now)
 		end
 	else -- your mana changed
 		local mana = plain(UnitPower("player", MANA))
-		if mana and lastMana and mana < lastMana then manaSpent(lastMana - mana) end
+		if mana and lastMana and mana < lastMana then
+			local amount = lastMana - mana
+			if castAt and now - castAt <= TOGETHER then -- its cast showed first
+				castAt = nil
+				log("drop %.0f: spent", amount)
+				manaSpent(amount)
+			else
+				dropAt, dropAmount = now, amount
+				log("drop %.0f: no cast", amount)
+			end
+		end
 		lastMana = mana
 	end
 end)
 
 local function watchMana()
+	DanTools.account.manaLog = DanTools.account.manaLog or {}
 	lastMana = plain(UnitPower("player", MANA))
 	manaWatcher:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
 	manaWatcher:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
 	manaWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+	manaWatcher:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+	manaWatcher:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
 end
 
 ---------------------------------------------------------------------------------------------------
