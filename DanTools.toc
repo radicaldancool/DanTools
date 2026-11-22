@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: DanTools
 ## Notes: Small tools. /dantools
-## Version: 2.2.0
+## Version: 2.3.0
 ## IconTexture: Interface\Icons\INV_Misc_Wrench_01
 ## X-Curse-Project-ID: 1821982
 ## SavedVariables: DanToolsAccountDB

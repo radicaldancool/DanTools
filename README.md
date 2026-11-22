@@ -13,7 +13,7 @@ on-screen display can be dragged, locked and restyled (font, size, background, b
 | Gold Rate | Gold per hour, with earned and spent totals. |
 | Five-Second Rule | Countdown until mana regen resumes after spending mana, as a bar or text. |
 | Drink Timer | Time until you are full while eating or drinking, as bars or text. |
-| Enemy Alert | Lists nearby enemy players. Click a name to target them. |
+| Enemy Alert | Lists nearby enemy players, Grudge players on top. Click a row to target them. |
 | Grudge List | Remembers enemy players who killed you, and marks their nameplate and tooltip. |
 | Bag Value | Vendor price on bag items, with the cheapest item outlined. |
 | Item Level | Item level on gear in your bags and on the character screen. |

@@ -4,6 +4,7 @@
 -- has a name. A name you saw on an enemy player is confirmed right away; any other name (that you
 -- never saw as a mob) is kept unconfirmed until you next see it: on an enemy player it's confirmed,
 -- on a mob or a same-faction player it's dropped.
+-- Players are known by their full name ("First Surname", DanTools.FullName), as the Death Recap gives it.
 
 local _, DanTools = ...
 local plain, isEnemyPlayer = DanTools.plain, DanTools.IsEnemyPlayer
@@ -29,8 +30,10 @@ function DanTools.GrudgeEntry(name)
 	return tool.db.enabled and db.killers[name] or nil
 end
 
-local function shortName(name)
-	return name and name:match("^([^%-]+)")
+-- A name from the Death Recap, or nil if it's hidden or blank. Forever has no realms, so it's whole.
+local function recapName(name)
+	name = plain(name)
+	return type(name) == "string" and name ~= "" and name or nil
 end
 
 -- "You 24, them 34 (+10)". 5+ levels above you is red; -1 is the game's skull level (10+ above you);
@@ -55,10 +58,11 @@ end
 
 local function note(unit)
 	if not plain(UnitExists(unit)) then return end
-	local name, realm = UnitName(unit)
-	name, realm = plain(name), plain(realm)
+	local name = DanTools.FullName(unit)
 	local isPlayer = UnitIsPlayer(unit)
 	if not name or (issecretvalue and issecretvalue(isPlayer)) then return end
+	-- a player whose faction is hidden could be on either side: nothing to learn from them
+	if isPlayer and plain(UnitFactionGroup(unit)) == nil then return end
 	local entry = db.killers[name]
 	if not isPlayer or not isEnemyPlayer(unit) then
 		if isPlayer then friends[name] = true else npcs[name] = true end
@@ -70,7 +74,6 @@ local function note(unit)
 	end
 	local _, class = UnitClass(unit)
 	local info = {
-		realm = realm ~= "" and realm or nil,
 		class = plain(class),
 		race = plain(UnitRace(unit)),
 		level = plain(UnitLevel(unit)),
@@ -80,7 +83,7 @@ local function note(unit)
 	seen[name] = info
 	if entry and not entry.confirmed then
 		entry.confirmed = true
-		entry.realm, entry.class, entry.race = info.realm, info.class, info.race
+		entry.class, entry.race = info.class, info.race
 		entry.guild = info.guild or entry.guild
 		for _, d in ipairs(entry.deaths) do
 			if not d.theirLevel and info.level then d.theirLevel, d.theirLevelApprox = info.level, true end
@@ -95,7 +98,7 @@ local function colorPlate(frame)
 	if not tool.db.enabled then return end
 	local unit = plain(frame.unit)
 	if type(unit) ~= "string" or not unit:match("^nameplate") or not frame.healthBar then return end
-	local name = plain(UnitName(unit))
+	local name = DanTools.FullName(unit)
 	if name and db.killers[name] and isEnemyPlayer(unit) then
 		frame.healthBar:SetStatusBarColor(COLOR.r, COLOR.g, COLOR.b)
 	end
@@ -115,7 +118,7 @@ local function findKiller()
 	if not events or #events == 0 then return end
 	local damage, order = {}, {}
 	for _, e in ipairs(events) do
-		local who = shortName(plain(e.sourceName))
+		local who = recapName(e.sourceName)
 		if who then
 			if not damage[who] then
 				damage[who] = 0
@@ -125,9 +128,9 @@ local function findKiller()
 		end
 	end
 	local now = GetTime()
-	local me = UnitName("player")
+	local me, myFirst = DanTools.FullName("player")
 	local function sawEnemy(who) return seen[who] and now - seen[who].time < SEEN_FOR end
-	local function maybeEnemy(who) return who ~= me and not npcs[who] and not friends[who] end
+	local function maybeEnemy(who) return who ~= me and who ~= myFirst and not npcs[who] and not friends[who] end
 	local function hardestHitter(ok)
 		local pick
 		for _, who in ipairs(order) do
@@ -135,7 +138,7 @@ local function findKiller()
 		end
 		return pick
 	end
-	local blow, blowSpell = shortName(plain(events[1].sourceName)), plain(events[1].spellName)
+	local blow, blowSpell = recapName(events[1].sourceName), plain(events[1].spellName)
 	if blow and sawEnemy(blow) then return blow, blowSpell, true end
 	local who = hardestHitter(sawEnemy)
 	if who then return who, nil, true end
@@ -147,7 +150,6 @@ local function record(who, spell, death, confirmed)
 	local info = seen[who] or {}
 	local entry = db.killers[who] or { deaths = {} }
 	entry.confirmed = entry.confirmed or confirmed
-	entry.realm = info.realm or entry.realm
 	entry.class, entry.race = info.class or entry.class, info.race or entry.race
 	entry.guild = info.guild or entry.guild
 	death.theirLevel, death.spell = info.level, spell
@@ -232,7 +234,7 @@ local function addTooltip(tooltip)
 	local _, unit = tooltip:GetUnit()
 	unit = plain(unit)
 	if not unit or not isEnemyPlayer(unit) then return end
-	local name = plain(UnitName(unit))
+	local name = DanTools.FullName(unit)
 	local entry = name and db.killers[name]
 	if not entry then return end
 	local deaths, me = entry.deaths, UnitName("player")

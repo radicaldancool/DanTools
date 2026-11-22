@@ -46,6 +46,18 @@ function DanTools.IsEnemyPlayer(unit)
 	return faction ~= nil and faction ~= UnitFactionGroup("player")
 end
 
+-- Forever gives players a surname, and UnitName returns it second (where other versions of the game
+-- return a realm). Returns "First Surname", which is the name the Death Recap and /targetexact use,
+-- and the first name on its own. Units with no surname (mobs) get the same name twice.
+function DanTools.FullName(unit)
+	local first, surname = UnitName(unit)
+	first, surname = plain(first), plain(surname)
+	if type(first) ~= "string" or first == "" then return nil end
+	if type(surname) ~= "string" or surname == "" then return first, first end
+	if first:sub(-#surname - 1) == " " .. surname then return first, first end -- already holds both
+	return first .. " " .. surname, first
+end
+
 function DanTools.Number(n)
 	n = math.floor(n + 0.5)
 	return BreakUpLargeNumbers and BreakUpLargeNumbers(n) or tostring(n)
@@ -176,6 +188,12 @@ local function createDisplay(tool)
 	for i = 1, tool.display.lines do
 		local line = frame:CreateFontString(nil, "OVERLAY")
 		line:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+		if tool.display.icons then -- rows: an icon left of the text, and a strip behind both for the tool to color
+			line.icon = frame:CreateTexture(nil, "ARTWORK")
+			line.icon:Hide()
+			line.back = frame:CreateTexture(nil, "BORDER")
+			line.back:Hide()
+		end
 		tool.lines[i] = line
 	end
 end
@@ -193,9 +211,16 @@ function DanTools:Place(tool)
 	tool.frame:SetPoint(p[1], UIParent, p[2], p[3], p[4])
 end
 
+-- Height of a row: a line with an icon (tool.display.icons).
+function DanTools:RowHeight(tool)
+	return (tool.db.look.size or 12) + 10
+end
+
 -- Stacks what the display is showing, top to bottom, and sizes the frame (and so its background)
 -- around it: the lines that have text, and the bars that are switched on, each with room for a
 -- label outside it (bar.labelAt). Bars line up: labels at the left or right all get the widest one's room.
+-- A line with an icon is a row: taller, with the text left-aligned beside the icon (line.noIcon
+-- turns that off for a line).
 function DanTools:Layout(tool)
 	local size = tool.db.look.size or 12
 	local stack = tool.stack or tool.lines
@@ -233,8 +258,24 @@ function DanTools:Layout(tool)
 				end
 			end
 		elseif (item.dtText or "") ~= "" then
-			item:SetPoint("TOP", tool.frame, "TOP", 0, -(PAD + height))
-			height = height + size + 2
+			if item.icon and not item.noIcon then
+				local row = self:RowHeight(tool)
+				item.icon:ClearAllPoints()
+				item.icon:SetSize(row - 2, row - 2)
+				item.icon:SetPoint("TOPLEFT", tool.frame, "TOPLEFT", PAD, -(PAD + height + 1))
+				item.icon:Show()
+				item.back:ClearAllPoints()
+				item.back:SetPoint("TOPLEFT", tool.frame, "TOPLEFT", 1, -(PAD + height))
+				item.back:SetPoint("BOTTOMRIGHT", tool.frame, "TOPRIGHT", -1, -(PAD + height + row))
+				item:SetPoint("LEFT", item.icon, "RIGHT", 4, 0)
+				height = height + row
+			else
+				if item.icon then item.icon:Hide() end
+				item:SetPoint("TOP", tool.frame, "TOP", 0, -(PAD + height))
+				height = height + size + 2
+			end
+		elseif item.icon then
+			item.icon:Hide()
 		end
 	end
 	if height == 0 then height = size + 2 end
