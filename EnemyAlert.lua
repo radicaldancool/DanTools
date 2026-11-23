@@ -32,6 +32,7 @@ local tool = DanTools:AddTool({
 		{ key = "sound", label = "Sound", default = true },
 		{ key = "ownSound", label = "Custom sound", default = true }, -- Sounds/EnemyAlert.ogg in place of the ping
 		{ key = "cooldown", label = "Cooldown (s)", type = "number", default = 2, min = 0, max = 60, step = 1 },
+		{ key = "muteTowns", label = "Mute neutral towns", default = true },
 		{ key = "grudgeOnly", label = "Grudge only", default = false },
 		{ key = "click", label = "Click to target", default = true },
 		{ key = "stay", label = "Stay (s)", type = "number", default = 60, min = 10, max = 600, step = 10 },
@@ -46,10 +47,34 @@ local lastSound, lastWarning = -1000, -1000 -- when your sound or the ping last 
 
 for _, line in ipairs(tool.lines) do line.back:SetColorTexture(0.9, 0, 0, 0.4) end -- shown on Grudge rows
 
--- Your own sound if it's on and the file is there, else the ping, at most once per "Cooldown (s)".
--- Grudge players get the raid warning as well, cooldown or not.
+-- Neutral towns, where the other faction stands around and the guards keep the peace. Matched on the
+-- area's name as the game gives it for these numbers, so it works in any language.
+local TOWNS = { [35] = "Booty Bay", [392] = "Ratchet", [976] = "Gadgetzan", [2255] = "Everlook",
+	[2361] = "Nighthaven", [3425] = "Cenarion Hold" }
+local zoneKind = C_PvP and C_PvP.GetZonePVPInfo or GetZonePVPInfo
+local townNames -- the names above in the game's language, looked up on first use
+
+local function inNeutralTown()
+	if zoneKind and plain(zoneKind()) == "sanctuary" then return true end
+	if not townNames then
+		townNames = {}
+		local areaName = C_Map and C_Map.GetAreaInfo
+		for id, english in pairs(TOWNS) do
+			local name = areaName and plain(areaName(id))
+			if type(name) ~= "string" or name == "" then name = english end -- an empty one would match open country
+			townNames[name] = true
+		end
+	end
+	local here = GetSubZoneText and plain(GetSubZoneText())
+	return here ~= nil and townNames[here] == true
+end
+
+-- Your own sound if it's on and the file is there, else the ping, at most once per "Cooldown (s)",
+-- and not in a neutral town with "Mute neutral towns" on.
+-- Grudge players get the raid warning as well, whatever the cooldown and wherever you are.
 local function alertSound(grudge, now)
-	if now - lastSound >= math.max(tool.db.cooldown, MIN_GAP) then
+	local quiet = tool.db.muteTowns and inNeutralTown()
+	if not quiet and now - lastSound >= math.max(tool.db.cooldown, MIN_GAP) then
 		local played = tool.db.ownSound and DanTools.PlayOwnSound("EnemyAlert")
 		if not played and not grudge then
 			PlaySound(SOUND, "Master")
