@@ -19,15 +19,18 @@ local tool = DanTools:AddTool({
 	name = "Drink Timer",
 	display = { width = 110, lines = 2, pos = { "CENTER", "CENTER", 0, -360 }, hideIdle = true },
 	options = {
+		{ type = "header", label = "Show" },
 		{ key = "label", label = "Label", default = true },
 		{ key = "timer", label = "Timer", default = true },
 		{ key = "bar", label = "Bar", default = true },
 		{ key = "sound", label = "Sound", default = true },
-		{ key = "labelAt", label = "Label position", type = "choice", choices = DanTools.LABEL_PLACES, default = "In bar" },
-		{ key = "barWidth", label = "Bar width", type = "number", default = 130, min = 40, max = 400, step = 10 },
-		{ key = "barHeight", label = "Bar height", type = "number", default = 12, min = 4, max = 40, step = 2 },
-		{ key = "manaColor", label = "Mana color", type = "color", default = { 0.3, 0.5, 1, 1 } },
-		{ key = "healthColor", label = "Health color", type = "color", default = { 0.25, 0.9, 0.25, 1 } },
+		{ type = "header", label = "Bar" },
+		{ key = "labelAt", label = "Label position", type = "choice", choices = DanTools.LABEL_PLACES, default = "In bar",
+			needs = "bar" },
+		{ key = "barWidth", label = "Width", type = "number", default = 130, min = 40, max = 400, step = 10, needs = "bar" },
+		{ key = "barHeight", label = "Height", type = "number", default = 12, min = 4, max = 40, step = 2, needs = "bar" },
+		{ key = "manaColor", label = "Mana color", type = "color", default = { 0.3, 0.5, 1, 1 }, needs = "bar" },
+		{ key = "healthColor", label = "Health color", type = "color", default = { 0.25, 0.9, 0.25, 1 }, needs = "bar" },
 	},
 })
 

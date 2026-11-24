@@ -753,7 +753,7 @@ loader:SetScript("OnEvent", function(self, event)
 			if db.enabled == nil then db.enabled = not tool.startOff end
 			db.bindings = db.bindings or {}
 			for _, o in ipairs(tool.options or {}) do
-				if db[o.key] == nil then
+				if o.key and db[o.key] == nil then -- a header has no key
 					db[o.key] = type(o.default) == "table" and CopyTable(o.default) or o.default
 				end
 			end

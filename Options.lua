@@ -12,7 +12,7 @@ local CLEAR, BLACK = { 0, 0, 0, 0 }, { 0, 0, 0, 1 }
 
 local window, scroll, selected
 local listButtons, pages = {}, {}
-local fontPopup, minimapButton
+local fontPopup, menu, minimapButton
 
 ---------------------------------------------------------------------------------------------------
 -- Widgets. A page is laid out top to bottom: page.y is where the next row starts.
@@ -23,6 +23,7 @@ local function text(parent, str, font, width)
 	fs:SetJustifyV("TOP")
 	if width then fs:SetWidth(width) end
 	fs:SetText(str)
+	if parent.group then table.insert(parent.group, fs) end
 	return fs
 end
 
@@ -48,12 +49,14 @@ local function button(parent, label, width, onClick)
 	b:SetSize(width, 22)
 	b:SetText(label)
 	b:SetScript("OnClick", onClick)
+	if parent.group then table.insert(parent.group, b) end
 	return b
 end
 
 local function check(page, label, get, set)
 	local box = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
 	box:SetSize(24, 24)
+	if page.group then table.insert(page.group, box) end
 	local fs = text(page, label)
 	fs:SetPoint("LEFT", box, "RIGHT", 2, 0)
 	box:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
@@ -98,6 +101,7 @@ end
 local function swatch(page, get, set)
 	local s = CreateFrame("Button", nil, page)
 	s:SetSize(20, 20)
+	if page.group then table.insert(page.group, s) end
 	local edge = s:CreateTexture(nil, "BACKGROUND")
 	edge:SetAllPoints()
 	edge:SetColorTexture(1, 1, 1)
@@ -166,6 +170,55 @@ local function bindingRow(page, tool, b)
 	default:SetPoint("LEFT", capture, "RIGHT", 6, 0)
 	table.insert(page.refreshers, refresh)
 	page.y = page.y - 26
+end
+
+-- A list of choices under a button. onHover, if given, hears of each one the mouse passes over.
+local function showMenu(anchor, choices, current, onPick, onHover)
+	if not menu then
+		menu = CreateFrame("Frame", nil, window, BackdropTemplateMixin and "BackdropTemplate" or nil)
+		menu:SetFrameStrata("TOOLTIP")
+		menu:EnableMouse(true)
+		DanTools.Skin(menu)
+		menu.rows = {}
+	end
+	if menu:IsShown() and menu.anchor == anchor then
+		menu:Hide()
+		return
+	end
+	menu.anchor, menu.onPick, menu.onHover = anchor, onPick, onHover
+	for i, choice in ipairs(choices) do
+		local row = menu.rows[i]
+		if not row then
+			row = CreateFrame("Button", nil, menu)
+			row:SetHeight(18)
+			row:SetPoint("TOPLEFT", 6, -5 - (i - 1) * 18)
+			row:SetPoint("TOPRIGHT", -6, -5 - (i - 1) * 18)
+			row:SetHighlightTexture([[Interface\QuestFrame\UI-QuestTitleHighlight]], "ADD")
+			row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			row.text:SetPoint("LEFT", 2, 0)
+			row:SetScript("OnClick", function(self)
+				menu:Hide()
+				menu.onPick(self.choice)
+			end)
+			row:SetScript("OnEnter", function(self)
+				if menu.onHover then menu.onHover(self.choice) end
+			end)
+			menu.rows[i] = row
+		end
+		row.choice = choice
+		row.text:SetText(choice)
+		if choice == current then
+			row.text:SetTextColor(1, 0.82, 0)
+		else
+			row.text:SetTextColor(1, 1, 1)
+		end
+		row:Show()
+	end
+	for i = #choices + 1, #menu.rows do menu.rows[i]:Hide() end
+	menu:SetSize(anchor:GetWidth(), #choices * 18 + 10)
+	menu:ClearAllPoints()
+	menu:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+	menu:Show()
 end
 
 local function showFontPopup(anchor, onPick)
@@ -328,6 +381,52 @@ local function buildGeneralPage()
 	return page
 end
 
+-- One setting's row. With o.needs, it greys out while that other setting is off.
+local function optionRow(page, tool, o)
+	local function get() return tool.db[o.key] end
+	local function set(value)
+		tool.db[o.key] = value
+		if tool.OnOption then tool:OnOption(o.key, value) end
+		page:Refresh()
+	end
+	page.group = {}
+	if o.type == "number" then
+		stepper(page, o.label, get, set, o.min, o.max, o.step)
+	elseif o.type == "color" then
+		rowLabel(page, o.label)
+		swatch(page, get, set):SetPoint("TOPLEFT", page, "TOPLEFT", 110, page.y - 1)
+		page.y = page.y - 26
+	elseif o.type == "choice" then -- a button showing the current choice; a click lists the rest
+		rowLabel(page, o.label)
+		local pick = button(page, "", 110, function(self)
+			showMenu(self, o.choices, get(), set, tool.OnPreview and function(choice)
+				tool:OnPreview(o.key, choice)
+			end)
+		end)
+		pick:SetPoint("TOPLEFT", page, "TOPLEFT", 110, page.y)
+		local arrow = pick:CreateTexture(nil, "OVERLAY")
+		arrow:SetSize(12, 12)
+		arrow:SetPoint("RIGHT", -4, 0)
+		arrow:SetTexture([[Interface\ChatFrame\ChatFrameExpandArrow]])
+		arrow:SetRotation(-math.pi / 2)
+		table.insert(page.refreshers, function() pick:SetText(get()) end)
+		page.y = page.y - 26
+	else
+		check(page, o.label, get, set)
+	end
+	local group = page.group
+	page.group = nil
+	if not o.needs then return end
+	table.insert(page.refreshers, function()
+		local need = tool.db[o.needs]
+		local on = need and need ~= "Off" and true or false
+		for _, widget in ipairs(group) do
+			widget:SetAlpha(on and 1 or 0.35)
+			if widget.SetEnabled then widget:SetEnabled(on) end
+		end
+	end)
+end
+
 local function buildToolPage(tool)
 	local page = newPage()
 	add(page, text(page, tool.name, "GameFontNormalLarge"), 28)
@@ -339,33 +438,17 @@ local function buildToolPage(tool)
 		end)
 	end
 	for _, o in ipairs(tool.options or {}) do
-		local function get() return tool.db[o.key] end
-		local function set(value)
-			tool.db[o.key] = value
-			if tool.OnOption then tool:OnOption(o.key, value) end
-		end
-		if o.type == "number" then
-			stepper(page, o.label, get, set, o.min, o.max, o.step)
-		elseif o.type == "color" then
-			rowLabel(page, o.label)
-			swatch(page, get, set):SetPoint("TOPLEFT", page, "TOPLEFT", 110, page.y - 1)
-			page.y = page.y - 26
-		elseif o.type == "choice" then -- a button showing the current choice; a click moves to the next
-			rowLabel(page, o.label)
-			local pick = button(page, "", 110, function(self)
-				local at = 1
-				for i, choice in ipairs(o.choices) do
-					if choice == get() then at = i end
-				end
-				set(o.choices[at % #o.choices + 1])
-				self:SetText(get())
-			end)
-			pick:SetPoint("TOPLEFT", page, "TOPLEFT", 110, page.y)
-			table.insert(page.refreshers, function() pick:SetText(get()) end)
-			page.y = page.y - 26
+		if o.type == "header" then
+			header(page, o.label)
 		else
-			check(page, o.label, get, set)
+			optionRow(page, tool, o)
 		end
+	end
+	if tool.BuildPreview then -- the tool's own picture of what its settings do
+		local frame, height, refresh = tool:BuildPreview(page)
+		page.y = page.y - 6
+		add(page, frame, height)
+		table.insert(page.refreshers, refresh)
 	end
 
 	if tool.bindings then
@@ -413,6 +496,7 @@ end
 
 function Options.Select(key)
 	if fontPopup then fontPopup:Hide() end
+	if menu then menu:Hide() end
 	if selected and pages[selected] then pages[selected]:Hide() end
 	selected = key
 	local page = pages[key]
@@ -484,6 +568,7 @@ local function build()
 	window:SetScript("OnHide", function()
 		DanTools:SetSettingsOpen(false)
 		if fontPopup then fontPopup:Hide() end
+		if menu then menu:Hide() end
 	end)
 end
 

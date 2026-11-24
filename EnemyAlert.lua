@@ -29,10 +29,12 @@ local tool = DanTools:AddTool({
 	name = "Enemy Alert",
 	display = { width = 320, lines = 10, icons = true, pos = { "CENTER", "CENTER", 0, 160 }, hideIdle = true },
 	options = {
+		{ type = "header", label = "Sound" },
 		{ key = "sound", label = "Sound", default = true },
-		{ key = "ownSound", label = "Custom sound", default = true }, -- Sounds/EnemyAlert.ogg in place of the ping
-		{ key = "cooldown", label = "Cooldown (s)", type = "number", default = 2, min = 0, max = 60, step = 1 },
-		{ key = "muteTowns", label = "Mute neutral towns", default = true },
+		{ key = "ownSound", label = "Custom sound", default = true, needs = "sound" }, -- Sounds/EnemyAlert.ogg in place of the ping
+		{ key = "cooldown", label = "Cooldown (s)", type = "number", default = 2, min = 0, max = 60, step = 1, needs = "sound" },
+		{ key = "muteTowns", label = "Mute neutral towns", default = true, needs = "sound" },
+		{ type = "header", label = "List" },
 		{ key = "grudgeOnly", label = "Grudge only", default = false },
 		{ key = "click", label = "Click to target", default = true },
 		{ key = "stay", label = "Stay (s)", type = "number", default = 60, min = 10, max = 600, step = 10 },

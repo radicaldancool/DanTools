@@ -11,15 +11,18 @@ local tool = DanTools:AddTool({
 	name = "Five-Second Rule",
 	display = { width = 70, lines = 1, pos = { "CENTER", "CENTER", 0, -330 }, hideIdle = true },
 	options = {
+		{ type = "header", label = "Show" },
 		{ key = "label", label = "Label", default = true },
 		{ key = "timer", label = "Timer", default = true },
 		{ key = "bar", label = "Bar", default = true },
-		{ key = "labelAt", label = "Label position", type = "choice", choices = DanTools.LABEL_PLACES, default = "In bar" },
-		{ key = "fill", label = "Bar fills", default = false },
-		{ key = "barWidth", label = "Bar width", type = "number", default = 110, min = 40, max = 400, step = 10 },
-		{ key = "barHeight", label = "Bar height", type = "number", default = 12, min = 4, max = 40, step = 2 },
-		{ key = "barColor", label = "Bar color", type = "color", default = { 0.3, 0.6, 1, 1 } },
-		{ key = "regenColor", label = "Regen color", type = "color", default = { 0.25, 1, 0.25, 1 } }, -- once regen is back
+		{ type = "header", label = "Bar" },
+		{ key = "labelAt", label = "Label position", type = "choice", choices = DanTools.LABEL_PLACES, default = "In bar",
+			needs = "bar" },
+		{ key = "fill", label = "Fill up", default = false, needs = "bar" },
+		{ key = "barWidth", label = "Width", type = "number", default = 110, min = 40, max = 400, step = 10, needs = "bar" },
+		{ key = "barHeight", label = "Height", type = "number", default = 12, min = 4, max = 40, step = 2, needs = "bar" },
+		{ key = "barColor", label = "Color", type = "color", default = { 0.3, 0.6, 1, 1 }, needs = "bar" },
+		{ key = "regenColor", label = "Regen color", type = "color", default = { 0.25, 1, 0.25, 1 }, needs = "bar" }, -- once regen is back
 	},
 })
 

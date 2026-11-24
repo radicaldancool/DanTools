@@ -24,18 +24,30 @@ local PAGE_CHANGES = "[bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; [bo
 
 -- "Hover bar": while a friend is under the cursor, the main bar's keys press this bar's buttons
 -- instead, so one set of keys attacks your target and heals whoever you point at.
-local HOVER_CHOICES = { "Off", "Bottom Left", "Bottom Right", "Right", "Left" }
-local HOVER_BARS = { ["Bottom Left"] = "MultiBarBottomLeftButton", ["Bottom Right"] = "MultiBarBottomRightButton",
+-- The bars go by their Edit Mode numbers. Picking one lights its buttons up green for a few seconds.
+local HOVER_CHOICES = { "Off", "Bar 2", "Bar 3", "Bar 4", "Bar 5", "Bar 6", "Bar 7", "Bar 8" }
+local HOVER_BARS = { ["Bar 2"] = "MultiBarBottomLeftButton", ["Bar 3"] = "MultiBarBottomRightButton",
+	["Bar 4"] = "MultiBarRightButton", ["Bar 5"] = "MultiBarLeftButton", ["Bar 6"] = "MultiBar5Button",
+	["Bar 7"] = "MultiBar6Button", ["Bar 8"] = "MultiBar7Button",
+	-- the names 2.6.0 saved
+	["Bottom Left"] = "MultiBarBottomLeftButton", ["Bottom Right"] = "MultiBarBottomRightButton",
 	["Right"] = "MultiBarRightButton", ["Left"] = "MultiBarLeftButton" }
+local FLASH_FOR = 4
+-- the action page each of those bars shows, for putting it on the main bar
+local HOVER_PAGES = { MultiBarBottomLeftButton = 6, MultiBarBottomRightButton = 5, MultiBarRightButton = 3,
+	MultiBarLeftButton = 4, MultiBar5Button = 13, MultiBar6Button = 14, MultiBar7Button = 15 }
 
 local tool = DanTools:AddTool({
 	key = "mouseover",
 	name = "Mouseover Cast",
 	startOff = true, -- it changes where your spells go, so it's yours to switch on
 	options = {
+		{ type = "header", label = "At cursor" },
 		{ key = "heal", label = "Heals", default = true },
 		{ key = "harm", label = "Attacks", default = false },
-		{ key = "hoverBar", label = "Hover bar", type = "choice", choices = HOVER_CHOICES, default = "Off" },
+		{ type = "header", label = "On friend" },
+		{ key = "hoverBar", label = "Use bar", type = "choice", choices = HOVER_CHOICES, default = "Off" },
+		{ key = "hoverShow", label = "Show on main bar", default = false, needs = "hoverBar" },
 	},
 })
 
@@ -57,6 +69,7 @@ pager:SetAttribute("_onstate-page", [[
 	end
 	if not page then return end
 	self:SetAttribute("page", page)
+	if self:GetAttribute("hovering") then return end -- the hover bar is on the buttons just now
 	for i = 1, 12 do
 		local button = self:GetFrameRef("b" .. i)
 		if button then
@@ -70,14 +83,37 @@ pager:SetAttribute("_onstate-page", [[
 local hover = CreateFrame("Frame", "DanToolsMouseoverHover", UIParent, "SecureHandlerStateTemplate")
 hover:SetAttribute("_onstate-hover", [[
 	self:ClearBindings()
-	local prefix = self:GetAttribute("bar")
-	if newstate ~= "friend" or not prefix then return end
-	for i = 1, 12 do
-		local first, second = GetBindingKey("ACTIONBUTTON" .. i)
-		if first then self:SetBindingClick(true, first, prefix .. i, "LeftButton") end
-		if second then self:SetBindingClick(true, second, prefix .. i, "LeftButton") end
+	local prefix, page, pager = self:GetAttribute("bar"), self:GetAttribute("page"), self:GetFrameRef("pager")
+	local on = newstate == "friend" and prefix
+	local show = on and page and self:GetAttribute("show")
+	if self:GetAttribute("shown") and not show then -- the main bar gets its own page back
+		self:SetAttribute("shown", nil)
+		for i = 1, 12 do
+			local button = self:GetFrameRef("b" .. i)
+			if button then button:SetAttribute("actionpage", nil) end
+		end
+		pager:SetAttribute("hovering", nil)
+		pager:RunAttribute("_onstate-page")
+	end
+	if show then -- "Show on main bar": the main bar's buttons turn to the hover bar's page
+		self:SetAttribute("shown", true)
+		pager:SetAttribute("hovering", true)
+		for i = 1, 12 do
+			local button = self:GetFrameRef("b" .. i)
+			if button then
+				button:SetAttribute("checkmouseovercast", pager:GetAttribute("ok" .. (i + (page - 1) * 12)) ~= false)
+				button:SetAttribute("actionpage", page)
+			end
+		end
+	elseif on then -- else the main bar's keys press the hover bar's buttons where they are
+		for i = 1, 12 do
+			local first, second = GetBindingKey("ACTIONBUTTON" .. i)
+			if first then self:SetBindingClick(true, first, prefix .. i, "LeftButton") end
+			if second then self:SetBindingClick(true, second, prefix .. i, "LeftButton") end
+		end
 	end
 ]])
+hover:SetFrameRef("pager", pager)
 local hoverSent -- the bar the secure frame was last given
 
 local managed = {} -- the buttons that follow the cursor as the game ships them: the only ones touched
@@ -132,11 +168,13 @@ local function apply()
 		end
 	end
 	local bar = tool.db.enabled and HOVER_BARS[tool.db.hoverBar] or nil
-	if bar ~= hoverSent then
-		hoverSent = bar
+	local hoverNow = tostring(bar) .. tostring(tool.db.hoverShow)
+	if hoverNow ~= hoverSent then
+		hoverSent = hoverNow
 		hover:SetAttribute("bar", bar)
-		hover:Execute("self:ClearBindings()") -- the next look at the cursor sets them up afresh
-		hover:SetAttribute("state-hover", nil)
+		hover:SetAttribute("page", bar and HOVER_PAGES[bar])
+		hover:SetAttribute("show", tool.db.hoverShow)
+		hover:SetAttribute("state-hover", "none") -- undoes the old setup; the next look at the cursor makes the new
 	end
 	for _, button in ipairs(managed) do
 		local slot = slotOf(button)
@@ -145,7 +183,7 @@ local function apply()
 	end
 	-- a check on the secure frame's page, kept in the saved file in case this ever misbehaves
 	local page, slot = pager:GetAttribute("page"), ActionButton1 and slotOf(ActionButton1)
-	if page and slot and slot ~= (page - 1) * PER_BAR + 1 then
+	if page and slot and not hover:GetAttribute("shown") and slot ~= (page - 1) * PER_BAR + 1 then
 		DanTools.account.mouseover.mismatch = ("page %s, slot %d"):format(tostring(page), slot)
 	end
 end
@@ -164,7 +202,10 @@ local function setup()
 			local button = _G[prefix .. i]
 			if button and button.GetAttribute and button:GetAttribute(SWITCH) then
 				managed[#managed + 1] = button
-				if prefix == "ActionButton" then pager:SetFrameRef("b" .. i, button) end
+				if prefix == "ActionButton" then
+					pager:SetFrameRef("b" .. i, button)
+					hover:SetFrameRef("b" .. i, button)
+				end
 			end
 		end
 	end
@@ -200,7 +241,36 @@ function DanTools:PrintMouseover()
 		tool.db.enabled and "on" or "off", tostring(call(getCVar, "enableMouseoverCast")), #managed, off))
 end
 
-function tool:OnOption()
+-- Lights up the buttons of the hover bar just picked, so you can see which bar that is.
+local flash = CreateFrame("Frame", nil, UIParent)
+flash:SetFrameStrata("TOOLTIP")
+flash:Hide()
+flash.marks = {}
+flash:SetScript("OnUpdate", function(self, dt)
+	self.left = self.left - dt
+	if self.left <= 0 then self:Hide() end
+end)
+
+local function showBar(prefix)
+	flash:Hide()
+	if not prefix then return end
+	for i = 1, PER_BAR do
+		local mark = flash.marks[i] or flash:CreateTexture(nil, "OVERLAY")
+		flash.marks[i] = mark
+		local button = _G[prefix .. i]
+		mark:SetShown(button ~= nil)
+		if button then
+			mark:SetColorTexture(0.2, 1, 0.2, 0.55)
+			mark:ClearAllPoints()
+			mark:SetAllPoints(button)
+		end
+	end
+	flash.left = FLASH_FOR
+	flash:Show()
+end
+
+function tool:OnOption(key, value)
+	if key == "hoverBar" then showBar(HOVER_BARS[value]) end
 	refresh()
 end
 
@@ -211,4 +281,93 @@ end
 
 function tool:OnDisable()
 	refresh() -- with the tool off every slot may follow the cursor, which puts the buttons back
+end
+
+function tool:OnPreview(key, value) -- the mouse is over a choice in the settings window
+	if key == "hoverBar" then showBar(HOVER_BARS[value]) end
+end
+
+---------------------------------------------------------------------------------------------------
+-- The picture on the settings page: the main bar's keys across the top, and under each what it casts,
+-- normally and (with a bar picked) with a friend under the cursor. A small cursor on an icon means
+-- that one goes to whoever you point at.
+
+local ICON, GAP, LABEL_W = 26, 2, 76
+local CURSOR = [[Interface\CURSOR\Point]]
+
+local function keyText(i)
+	local key = GetBindingKey("ACTIONBUTTON" .. i)
+	if not key then return "" end
+	key = key:gsub("SHIFT%-", "s"):gsub("CTRL%-", "c"):gsub("ALT%-", "a"):gsub("MOUSEWHEEL", "W"):gsub("BUTTON", "M")
+		:gsub("NUMPAD", "N")
+	return key:sub(1, 4)
+end
+
+function tool:BuildPreview(parent)
+	local frame = CreateFrame("Frame", nil, parent)
+	local step = ICON + GAP
+	frame:SetSize(LABEL_W + PER_BAR * step, 18 + 2 * step + 4)
+	local keys, rows = {}, {}
+	for i = 1, PER_BAR do
+		local key = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+		key:SetPoint("TOP", frame, "TOPLEFT", LABEL_W + (i - 1) * step + ICON / 2, -4)
+		keys[i] = key
+	end
+	for r, name in ipairs({ "Normal", "On friend" }) do
+		local row = CreateFrame("Frame", nil, frame)
+		row:SetAllPoints()
+		row.cells = {}
+		local top = -18 - (r - 1) * step
+		local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+		label:SetPoint("LEFT", frame, "TOPLEFT", 4, top - ICON / 2)
+		label:SetText(name)
+		for i = 1, PER_BAR do
+			local icon = row:CreateTexture(nil, "ARTWORK")
+			icon:SetSize(ICON, ICON)
+			icon:SetPoint("TOPLEFT", LABEL_W + (i - 1) * step, top)
+			local mark = row:CreateTexture(nil, "OVERLAY")
+			mark:SetSize(16, 16)
+			mark:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 5, -5)
+			mark:SetTexture(CURSOR)
+			row.cells[i] = { icon = icon, mark = mark }
+		end
+		rows[r] = row
+	end
+
+	-- friend: this row is what the keys do with a friend under the cursor, so only heals follow it
+	local function fill(row, slotAt, friend)
+		for i, cell in ipairs(row.cells) do
+			local slot = slotAt(i)
+			local texture = slot and call(GetActionTexture, slot)
+			local follows = false
+			if texture then
+				cell.icon:SetTexture(texture)
+				cell.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+				local help, harm = slotKind(slot)
+				follows = (help or (harm and not friend)) and allowed(slot) and true or false
+			else
+				cell.icon:SetColorTexture(0, 0, 0, 0.4)
+			end
+			cell.mark:SetShown(follows)
+		end
+	end
+	local function redraw()
+		local bar = tool.db.enabled and HOVER_BARS[tool.db.hoverBar]
+		local page = bar and HOVER_PAGES[bar]
+		for i = 1, PER_BAR do keys[i]:SetText(keyText(i)) end
+		fill(rows[1], function(i)
+			local button = _G["ActionButton" .. i]
+			return button and slotOf(button)
+		end)
+		rows[2]:SetShown(page ~= nil)
+		if page then fill(rows[2], function(i) return (page - 1) * PER_BAR + i end, true) end
+	end
+	local wait = 0
+	frame:SetScript("OnUpdate", function(_, dt) -- the bars can change while the window is open
+		wait = wait + dt
+		if wait < 0.5 then return end
+		wait = 0
+		redraw()
+	end)
+	return frame, frame:GetHeight(), redraw
 end
