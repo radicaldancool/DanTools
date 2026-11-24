@@ -750,7 +750,7 @@ loader:SetScript("OnEvent", function(self, event)
 			local db = DanToolsDB[tool.key] or {}
 			DanToolsDB[tool.key] = db
 			tool.db = db
-			if db.enabled == nil then db.enabled = true end
+			if db.enabled == nil then db.enabled = not tool.startOff end
 			db.bindings = db.bindings or {}
 			for _, o in ipairs(tool.options or {}) do
 				if db[o.key] == nil then

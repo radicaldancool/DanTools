@@ -18,6 +18,7 @@ on-screen display can be dragged, locked and restyled (font, size, background, b
 | Bag Value | Vendor price on bag items, with the cheapest item outlined. |
 | Item Level | Item level on gear in your bags and on the character screen. |
 | Quest Sound | Plays a clip when you accept a quest. |
+| Mouseover Cast | Picks which action bar spells follow your cursor: heals, attacks, both or neither. Starts off. |
 
 ## Install
 
@@ -40,6 +41,7 @@ replace the `.ogg` files in the `Sounds` folder and restart the game.
 - `/dantools` opens the settings window. The minimap button does the same.
 - `/grudge` opens the Grudge list.
 - `/dantools mana` prints what the mana watcher last saw (for the Five-Second Rule).
+- `/dantools mouseover` prints how many buttons Mouseover Cast runs and how many it has switched off.
 
 ## Releasing
 

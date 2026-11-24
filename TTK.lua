@@ -91,6 +91,9 @@ local function finishKill(guid, when)
 	end
 	if name and not fight.tapDenied then
 		remember(tool.db.kills, name, took)
+		-- kills from before the count was kept are only known as far as the remembered few go
+		tool.db.count[name] = (tool.db.count[name] or #tool.db.kills[name] - 1) + 1
+		killed.count = tool.db.count[name]
 		if mana then remember(tool.db.mana, name, mana) end
 	end
 end
@@ -161,14 +164,15 @@ local function update()
 		DanTools:SetLines(tool, "|cffffd100Fight|r " .. clock(elapsed), "|cffffd100Dies in|r " .. dies,
 			showMana and fight.spent ~= 0 and manaText("Mana", fight.spent) or "")
 	elseif killed and now - killed.at < SHOW_KILL_FOR then
-		DanTools:SetLines(tool, "|cffffd100Killed in|r " .. clock(killed.took),
+		DanTools:SetLines(tool, "|cffffd100Killed in|r " .. clock(killed.took)
+			.. (killed.count and ("  |cff999999x%d|r"):format(killed.count) or ""),
 			showMana and manaText("Mana", killed.mana) or "",
 			showMana and efficiencyText(killed.perMana, killed.vsPast) or "")
 	elseif name and isMob and not dead and kills[name] and UnitCanAttack("player", "target") then
 		local list, manaList = kills[name], manas[name]
 		DanTools:SetLines(tool, "|cffffd100Avg kill|r ~" .. clock(average(list)),
 			showMana and manaList and #manaList > 0 and manaText("Avg mana", average(manaList)) or "",
-			("|cff999999last %d kill%s|r"):format(#list, #list == 1 and "" or "s"))
+			"|cffffd100Kills|r " .. (tool.db.count[name] or #list))
 	else
 		DanTools:SetLines(tool, "|cffffd100Fight|r --")
 		idle = true
@@ -214,6 +218,7 @@ end)
 function tool:OnLoad()
 	self.db.kills = self.db.kills or {}
 	self.db.mana = self.db.mana or {}
+	self.db.count = self.db.count or {} -- mob name -> how many times you've killed it
 end
 
 function tool:OnEnable()
@@ -233,5 +238,6 @@ end
 tool.buttons = { { text = "Forget kills", onClick = function()
 	wipe(tool.db.kills)
 	wipe(tool.db.mana)
+	wipe(tool.db.count)
 	print("DanTools: kills forgotten.")
 end } }

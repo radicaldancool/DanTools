@@ -580,8 +580,11 @@ end
 
 SLASH_DANTOOLS1 = "/dantools"
 SlashCmdList.DANTOOLS = function(msg)
-	if msg and msg:lower():match("^%s*mana") then -- what the mana watcher last saw
+	local word = msg and msg:lower():match("^%s*(%a+)")
+	if word == "mana" then -- what the mana watcher last saw
 		DanTools:PrintManaLog()
+	elseif word == "mouseover" then
+		DanTools:PrintMouseover()
 	else
 		Options.Toggle()
 	end
