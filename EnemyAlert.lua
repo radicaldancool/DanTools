@@ -106,6 +106,8 @@ end
 local getCVar = C_CVar and C_CVar.GetCVar or GetCVar
 local PRESS_OR_RELEASE = getCVar and getCVar("ActionButtonUseKeyDown") ~= nil
 
+local openMenu     -- the right-click menu, defined below
+local CAN_PASS = false -- whether a button can let some mouse buttons through to what's behind it
 local rows = {}    -- the secure click-to-target button over each row
 local rowsState    -- what the buttons were last set up for, so they're only touched when that changes
 for i = 1, #tool.lines do
@@ -115,8 +117,11 @@ for i = 1, #tool.lines do
 	row:SetAttribute("useOnKeyDown", false)
 	row:SetAttribute("type1", "macro")
 	row:SetHighlightTexture(HOVER, "ADD")
-	-- right and middle clicks go to whatever is behind the button
-	if row.SetPassThroughButtons then pcall(row.SetPassThroughButtons, row, "RightButton", "MiddleButton") end
+	-- middle clicks go to whatever is behind the button
+	if row.SetPassThroughButtons then CAN_PASS = pcall(row.SetPassThroughButtons, row, "MiddleButton") end
+	row:SetScript("PostClick", function(_, button, down)
+		if button == "RightButton" and not down and shown[i] then openMenu(shown[i]) end
+	end)
 	row:Hide()
 	rows[i] = row
 end
@@ -154,8 +159,10 @@ end
 local function syncRows()
 	if InCombatLockdown() then return end
 	local frame = tool.frame
-	local on = tool.db.enabled and tool.db.click
-	local state = { tostring(on), tostring((frame:GetCenter())), tostring(frame:GetTop()), frame:GetWidth(),
+	-- with "Click to target" off the buttons stay for the right-click menu, where left clicks can go through
+	local click = tool.db.click
+	local on = tool.db.enabled and (click or CAN_PASS)
+	local state = { tostring(on), tostring(click), tostring((frame:GetCenter())), tostring(frame:GetTop()), frame:GetWidth(),
 		tool.db.look.size or 12 }
 	for _, entry in ipairs(shown) do state[#state + 1] = entry.name end
 	state = table.concat(state, "|")
@@ -164,6 +171,9 @@ local function syncRows()
 	for i, row in ipairs(rows) do
 		local entry = on and shown[i]
 		if entry and placeRow(row, i) then
+			if CAN_PASS then
+				if click then row:SetPassThroughButtons("MiddleButton") else row:SetPassThroughButtons("LeftButton", "MiddleButton") end
+			end
 			row:SetAttribute("macrotext1", targetMacro(entry))
 			row:Show()
 		else
@@ -193,9 +203,8 @@ combat:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_REGEN_DISABLED" then armRows() else syncRows() end
 end)
 
--- "Name  34 (+10)", the name in its class color. Grudge players get a skull in front and
--- "GRUDGE x2" (how often they killed you) behind.
-local function describe(unit, name, class, grudge)
+-- "Name  34 (+10)", the name in its class color.
+local function describe(unit, name, class)
 	local color = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
 	local level, levelText = plain(UnitLevel(unit)), "??"
 	if level and level > 0 then
@@ -207,8 +216,15 @@ local function describe(unit, name, class, grudge)
 	end
 	local text = ("%s  %s"):format(color and color.colorStr and ("|c" .. color.colorStr .. name .. "|r") or name,
 		levelText)
-	if grudge then text = ("%s %s  |cffffd100GRUDGE x%d|r"):format(SKULL, text, #grudge.deaths) end
 	return text
+end
+
+-- A row's text. Grudge players get a skull in front and "GRUDGE x2" (how often they killed you) behind.
+local function rowText(entry)
+	local grudge = entry.grudge and DanTools.GrudgeEntry and DanTools.GrudgeEntry(entry.name)
+	if not grudge then return entry.text end
+	local kills = #grudge.deaths
+	return ("%s %s  |cffffd100GRUDGE%s|r"):format(SKULL, entry.text, kills > 0 and (" x" .. kills) or "")
 end
 
 -- Picks who is on the rows ("Rows" of them at most): Grudge players first, then everyone else,
@@ -225,12 +241,15 @@ local function arrange()
 end
 
 local function redraw()
+	for _, entry in ipairs(entries) do -- the Grudge list may have changed since they were seen
+		entry.grudge = DanTools.GrudgeEntry and DanTools.GrudgeEntry(entry.name) and true or false
+	end
 	arrange()
 	local lines, idle = tool.lines, #shown == 0
 	local texts = {}
 	for i, line in ipairs(lines) do
 		local entry = shown[i]
-		texts[i] = entry and entry.text or ""
+		texts[i] = entry and rowText(entry) or ""
 		line.back:SetShown(entry ~= nil and entry.grudge)
 		if entry then setIcon(line.icon, entry.class) end
 	end
@@ -241,6 +260,40 @@ local function redraw()
 	if relayout then DanTools:Layout(tool) end
 	DanTools:SetIdle(tool, idle)
 	syncRows()
+end
+
+-- Right-clicking a row: one button at the cursor, which adds that player to the Grudge list or takes
+-- them off. It goes away by itself if left alone.
+local menu
+function openMenu(entry)
+	local grudgeTool = DanTools.byKey.grudge
+	if not (grudgeTool and grudgeTool.db.enabled and DanTools.GrudgeToggle) then return end
+	if not menu then
+		menu = CreateFrame("Button", nil, UIParent, "UIPanelButtonTemplate")
+		menu:SetFrameStrata("DIALOG")
+		menu:SetSize(130, 24)
+		menu:SetScript("OnClick", function(self)
+			self:Hide()
+			local name = self.entry.name
+			if not DanTools.GrudgeToggle(name) and tool.db.grudgeOnly then
+				for i = #entries, 1, -1 do
+					if entries[i].name == name then table.remove(entries, i) end
+				end
+			end
+			redraw()
+		end)
+		menu:SetScript("OnUpdate", function(self, dt)
+			self.away = self:IsMouseOver() and 0 or self.away + dt
+			if self.away > 2.5 then self:Hide() end
+		end)
+	end
+	menu.entry, menu.away = entry, 0
+	menu:SetText(DanTools.GrudgeEntry(entry.name) and "Remove grudge" or "Add grudge")
+	local x, y = GetCursorPosition()
+	local scale = UIParent:GetEffectiveScale()
+	menu:ClearAllPoints()
+	menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale + 2, y / scale - 2)
+	menu:Show()
 end
 
 local function note(unit)
@@ -270,7 +323,7 @@ local function note(unit)
 	end
 	local _, class = UnitClass(unit)
 	entry.class, entry.grudge = plain(class), grudge and true or false
-	entry.text, entry.seenAt = describe(unit, name, entry.class, grudge), now
+	entry.text, entry.seenAt = describe(unit, name, entry.class), now
 	if #entries > KEEP then -- full: whoever was seen longest ago goes
 		local oldest = 1
 		for i, e in ipairs(entries) do

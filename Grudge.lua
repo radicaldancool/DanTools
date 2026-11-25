@@ -110,6 +110,20 @@ local function colorAllPlates()
 	end
 end
 
+-- Puts a player on the list by hand, or takes them off. Returns whether they're on it now.
+function DanTools.GrudgeToggle(name)
+	if not tool.db.enabled then return false end
+	if db.killers[name] then
+		db.killers[name] = nil
+	else
+		local info = seen[name] or {}
+		db.killers[name] = { deaths = {}, confirmed = true, class = info.class, race = info.race, guild = info.guild }
+	end
+	colorAllPlates()
+	refreshWindow()
+	return db.killers[name] ~= nil
+end
+
 -- Returns killer, spell, confirmed. Hit 1 of the recap is the killing blow. A source seen as an enemy
 -- player wins (killing blow first, else whoever hit hardest); otherwise the killing blow, or the hardest
 -- hitter, that was never seen as a mob or a same-faction player, unconfirmed.
@@ -238,7 +252,11 @@ local function addTooltip(tooltip)
 	local entry = name and db.killers[name]
 	if not entry then return end
 	local deaths, me = entry.deaths, UnitName("player")
-	tooltip:AddLine(("Killed you %d time%s:"):format(#deaths, #deaths == 1 and "" or "s"), 1, 0, 1)
+	if #deaths == 0 then -- added by hand
+		tooltip:AddLine("Grudge", 1, 0, 1)
+	else
+		tooltip:AddLine(("Killed you %d time%s:"):format(#deaths, #deaths == 1 and "" or "s"), 1, 0, 1)
+	end
 	for i = #deaths, math.max(1, #deaths - SHOWN_DEATHS + 1), -1 do
 		tooltip:AddLine("  " .. deathLine(deaths[i], me), 1, 1, 1)
 	end
